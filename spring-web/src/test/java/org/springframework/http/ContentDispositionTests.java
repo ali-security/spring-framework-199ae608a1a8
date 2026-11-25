@@ -156,6 +156,15 @@ class ContentDispositionTests {
 	}
 
 	@Test
+	void parseBackslashInName() {
+		String s = "form-data; name=\"foo\\\"bar\"; filename=\"foo.txt\"";
+		ContentDisposition cd = ContentDisposition.parse(s);
+		assertThat(cd.getName()).isEqualTo("foo\"bar");
+		assertThat(cd.getFilename()).isEqualTo("foo.txt");
+		assertThat(cd.toString()).isEqualTo(s);
+	}
+
+	@Test
 	void parseBackslashInLastPosition() {
 		ContentDisposition cd = ContentDisposition.parse("form-data; name=\"foo\"; filename=\"bar\\\"");
 		assertThat(cd.getName()).isEqualTo("foo");
@@ -266,6 +275,42 @@ class ContentDispositionTests {
 		tester.accept("foo.txt\\", "foo.txt\\\\");
 		tester.accept("foo.txt\\\\", "foo.txt\\\\\\\\");
 		tester.accept("foo.txt\\\\\\", "foo.txt\\\\\\\\\\\\");
+	}
+
+	@Test
+	void formatWithControlCharactersStripped() {
+		assertThat(
+				ContentDisposition.formData()
+						.name("foo\r\nbar")
+						.filename("a\r\nb.txt")
+						.build().toString())
+				.isEqualTo("form-data; name=\"foobar\"; filename=\"ab.txt\"");
+
+		assertThat(
+				ContentDisposition.attachment()
+						.filename("a\r\nSet-Cookie: x=y\u0000\u007F.txt", StandardCharsets.US_ASCII)
+						.build().toString())
+				.isEqualTo("attachment; filename=\"aSet-Cookie: x=y.txt\"");
+
+		assertThat(
+				ContentDisposition.attachment()
+						.filename("a\r\n中.txt", StandardCharsets.UTF_8)
+						.build().toString())
+				.isEqualTo("attachment; filename=\"a_.txt\"; filename*=UTF-8''a%0D%0A%E4%B8%AD.txt");
+	}
+
+	@Test
+	void formatWithNameWithQuotes() {
+		ContentDisposition cd = ContentDisposition.formData()
+				.name("foo\"; filename=\"evil.sh")
+				.build();
+		String result = cd.toString();
+		assertThat(result).isEqualTo("form-data; name=\"foo\\\"; filename=\\\"evil.sh\"");
+
+		ContentDisposition parsed = ContentDisposition.parse(result);
+		assertThat(parsed.getName()).isEqualTo("foo\"; filename=\"evil.sh");
+		assertThat(parsed.getFilename()).isNull();
+		assertThat(parsed).isEqualTo(cd);
 	}
 
 	@Test
